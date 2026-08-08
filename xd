@@ -482,13 +482,13 @@ do
 
         local Gui = Self.Instance
         local Dragging = false
-        local GrabOffset
+        local DragStart
+        local StartPosition
 
-        local Set = function()
-            local MouseLocation = UserInputService:GetMouseLocation()
-
-            local NewX = MouseLocation.X - GrabOffset.X
-            local NewY = MouseLocation.Y - GrabOffset.Y
+        local Set = function(Input)
+            local DragDelta = Input.Position - DragStart
+            local NewX = StartPosition.X.Offset + DragDelta.X
+            local NewY = StartPosition.Y.Offset + DragDelta.Y
 
             local ScreenSize = Gui.Parent.AbsoluteSize
             local GuiSize = Gui.AbsoluteSize
@@ -496,45 +496,56 @@ do
             NewX = math.clamp(NewX, 0, ScreenSize.X - GuiSize.X)
             NewY = math.clamp(NewY, 0, ScreenSize.Y - GuiSize.Y)
 
+            local MainWindow = Library.MainWindowFrame
+            if Gui ~= MainWindow
+                and Library.WindowOpenState
+                and MainWindow
+                and MainWindow.Parent == Gui.Parent
+                and MainWindow.Visible
+            then
+                local PanelPosition = MainWindow.AbsolutePosition
+                local PanelSize = MainWindow.AbsoluteSize
+                local PanelLeft = PanelPosition.X
+                local PanelTop = PanelPosition.Y
+                local PanelRight = PanelLeft + PanelSize.X
+                local PanelBottom = PanelTop + PanelSize.Y
+
+                local OverlapsX = (NewX < PanelRight) and ((NewX + GuiSize.X) > PanelLeft)
+                local OverlapsY = (NewY < PanelBottom) and ((NewY + GuiSize.Y) > PanelTop)
+
+                if OverlapsX and OverlapsY then
+                    local LeftGap = math.abs((NewX + GuiSize.X) - PanelLeft)
+                    local RightGap = math.abs(NewX - PanelRight)
+                    local TopGap = math.abs((NewY + GuiSize.Y) - PanelTop)
+                    local BottomGap = math.abs(NewY - PanelBottom)
+                    local MinGap = math.min(LeftGap, RightGap, TopGap, BottomGap)
+
+                    if MinGap == LeftGap then
+                        NewX = PanelLeft - GuiSize.X
+                    elseif MinGap == RightGap then
+                        NewX = PanelRight
+                    elseif MinGap == TopGap then
+                        NewY = PanelTop - GuiSize.Y
+                    else
+                        NewY = PanelBottom
+                    end
+                end
+            end
+
             Gui.Position = UDim2.new(0, math.floor(NewX + 0.5), 0, math.floor(NewY + 0.5))
         end
 
         local InputChanged
-        local CursorState
-
-        local function SetDragCursor()
-            if Library.MouseCursor and Library.MouseCursor.Instance and Library.MouseCursor.Instance.Visible then
-                CursorState = {
-                    CustomVisible = true,
-                    MouseIconEnabled = UserInputService.MouseIconEnabled
-                }
-                Library.MouseCursor.Instance.Visible = false
-                UserInputService.MouseIconEnabled = true
-            end
-        end
-
-        local function RestoreDragCursor()
-            if CursorState then
-                if Library and Library.MouseCursor and Library.MouseCursor.Instance then
-                    Library.MouseCursor.Instance.Visible = Library.WindowOpenState
-                end
-                UserInputService.MouseIconEnabled = CursorState.MouseIconEnabled
-                CursorState = nil
-            end
-        end
 
         Self:Connect("InputBegan", function(Input)
+            if not Library.WindowOpenState then
+                return
+            end
+
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = true
-                SetDragCursor()
-
-                local MouseLocation = UserInputService:GetMouseLocation()
-                local AbsPos = Gui.AbsolutePosition
-
-                Gui.AnchorPoint = Vector2.new(0, 0)
-                Gui.Position = UDim2.fromOffset(AbsPos.X, AbsPos.Y)
-
-                GrabOffset = Vector2.new(MouseLocation.X - AbsPos.X, MouseLocation.Y - AbsPos.Y)
+                DragStart = Input.Position
+                StartPosition = Gui.Position
 
                 if InputChanged then
                     return
@@ -543,12 +554,8 @@ do
                 InputChanged = Input.Changed:Connect(function()
                     if Input.UserInputState == Enum.UserInputState.End then
                         Dragging = false
-                        RestoreDragCursor()
                         InputChanged:Disconnect()
                         InputChanged = nil
-                        task.defer(function()
-                            if Library then Library:SaveAutoLayout() end
-                        end)
                     end
                 end)
             end
@@ -556,8 +563,13 @@ do
 
         Library:Connect(UserInputService.InputChanged, function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
+                if Dragging and not Library.WindowOpenState then
+                    Dragging = false
+                    return
+                end
+
                 if Dragging then
-                    Set()
+                    Set(Input)
                 end
             end
         end)
@@ -2964,6 +2976,8 @@ do
                     AutomaticSize = Enum.AutomaticSize.XY,
                     BackgroundColor3 = Library.Theme["Background"]
                 }):AddToTheme({ BackgroundColor3 = 'Background' })
+
+                Items["KeybindList"]:MakeDraggable()
 
                 Library:Create("UIStroke", {
                     Name = "\0",
