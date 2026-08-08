@@ -2,7 +2,6 @@ if getgenv().Library and getgenv().Library.Exit then
     getgenv().Library:Exit()
 end
 
--- Bad executor support (atleast by a bit)
 cloneref = cloneref or function(Object) return Object end
 
 --#region Services
@@ -404,13 +403,24 @@ do
         end
 
         local OldTransparency = Object[Property]
+        local IsTransparent = OldTransparency >= 1
+
         Object[Property] = Visibility and 1 or OldTransparency
 
+        local Target = Visibility and 0 or 1
+        if not Visibility and IsTransparent then
+            Target = OldTransparency
+        end
+
         local NewTween = Library:Tween({
-            [Property] = Visibility and OldTransparency or 1
+            [Property] = Target
         }, nil, Object)
 
-        Library:Connect(NewTween.Completed, function()
+        Library:Connect(NewTween.Completed, function(Playback)
+            if Playback ~= Enum.PlaybackState.Completed then
+                return
+            end
+
             if not Visibility then
                 task.wait()
                 Object[Property] = OldTransparency
@@ -428,10 +438,30 @@ do
         Self._FadeId = (Self._FadeId or 0) + 1
         local FadeId = Self._FadeId
 
-        local NewTween
+        local Finished = false
+
+        local function Complete()
+            if Finished then
+                return
+            end
+
+            Finished = true
+
+            if FadeId ~= Self._FadeId then
+                return
+            end
+
+            if Callback and type(Callback) == "function" then
+                Callback()
+            end
+
+            Self.Instance.Visible = Visibility
+        end
 
         local Children = Self.Instance:GetDescendants()
         table.insert(Children, Self.Instance)
+
+        local Pending = 0
 
         for _, Child in Children do
             local TransparencyProperty = Library:GetTweenProperty(Child)
@@ -442,24 +472,46 @@ do
 
             if type(TransparencyProperty) == "table" then
                 for _, Property in TransparencyProperty do
-                    NewTween = Library:Fade(Property, Visibility, Child)
+                    Pending = Pending + 1
+                    local NewTween = Library:Fade(Property, Visibility, Child)
+                    if NewTween then
+                        Library:Connect(NewTween.Completed, function(Playback)
+                            if Playback ~= Enum.PlaybackState.Completed then
+                                return
+                            end
+
+                            Pending = Pending - 1
+                            if Pending <= 0 then
+                                Complete()
+                            end
+                        end)
+                    else
+                        Pending = Pending - 1
+                    end
                 end
             else
-                NewTween = Library:Fade(TransparencyProperty, Visibility, Child)
+                Pending = Pending + 1
+                local NewTween = Library:Fade(TransparencyProperty, Visibility, Child)
+                if NewTween then
+                    Library:Connect(NewTween.Completed, function(Playback)
+                        if Playback ~= Enum.PlaybackState.Completed then
+                            return
+                        end
+
+                        Pending = Pending - 1
+                        if Pending <= 0 then
+                            Complete()
+                        end
+                    end)
+                else
+                    Pending = Pending - 1
+                end
             end
         end
 
-        Library:Connect(NewTween.Completed, function()
-            if FadeId ~= Self._FadeId then
-                return
-            end
-
-            if Callback and type(Callback) == "function" then
-                Callback()
-            end
-
-            Self.Instance.Visible = Visibility
-        end)
+        if Pending <= 0 then
+            Complete()
+        end
     end
 
     Library.MakeDraggable = function(Self)
@@ -7570,12 +7622,13 @@ do
                     TextColor3 = Color3.fromRGB(235, 235, 235),
                     TextStrokeColor3 = Color3.fromRGB(255, 255, 255),
                     Text = Window.Title,
-                    AnchorPoint = Vector2.new(0, 1),
+                    AnchorPoint = Vector2.new(0.5, 1),
                     BorderSizePixel = 0,
                     BackgroundTransparency = 1,
-                    Position = UDim2.new(0, -1, 0, -8),
+                    Position = UDim2.new(0.5, 0, 0, -8),
                     AutomaticSize = Enum.AutomaticSize.XY,
                     TextSize = 9,
+                    TextXAlignment = Enum.TextXAlignment.Center,
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255)
                 }):AddToTheme({ TextColor3 = "Text" })
 
@@ -7615,6 +7668,7 @@ do
                     Size = UDim2.new(0, 0, 0, 16),
                     AutomaticSize = Enum.AutomaticSize.X,
                     BorderSizePixel = 0,
+                    Visible = false,
                     BackgroundColor3 = Color3.fromRGB(46, 46, 46)
                 }):AddToTheme({ BackgroundColor3 = function() return Library.Theme["Outline"] end })
 
@@ -8085,7 +8139,7 @@ do
                         return
                     end
 
-                    if Items["Page"].Instance.Visible then
+                    if Bool then
                         Items["Page"].Instance.Parent = Page.Window.Items["Content"].Instance
                     else
                         Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
@@ -8238,7 +8292,7 @@ do
                         return
                     end
 
-                    if Items["Page"].Instance.Visible then
+                    if Bool then
                         Items["Page"].Instance.Parent = Page.Page.Items["Columns"].Instance
                     else
                         Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
