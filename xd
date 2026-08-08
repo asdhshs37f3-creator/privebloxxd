@@ -1,7 +1,21 @@
+--[[
+    2/22/2026
+    Library.lua
+    Purpose:
+        NH ui library
+
+    Author: @joestar._3
+    Dependencies:
+        None
+]]
+
+-- hi guys
+
 if getgenv().Library and getgenv().Library.Exit then
     getgenv().Library:Exit()
 end
 
+-- Bad executor support (atleast by a bit)
 cloneref = cloneref or function(Object) return Object end
 
 --#region Services
@@ -403,20 +417,13 @@ do
         end
 
         local OldTransparency = Object[Property]
-
         Object[Property] = Visibility and 1 or OldTransparency
 
-        local Target = Visibility and OldTransparency or 1
-
         local NewTween = Library:Tween({
-            [Property] = Target
+            [Property] = Visibility and OldTransparency or 1
         }, nil, Object)
 
-        Library:Connect(NewTween.Completed, function(Playback)
-            if Playback ~= Enum.PlaybackState.Completed then
-                return
-            end
-
+        Library:Connect(NewTween.Completed, function()
             if not Visibility then
                 task.wait()
                 Object[Property] = OldTransparency
@@ -431,33 +438,10 @@ do
             Self.Instance.Visible = true
         end
 
-        Self._FadeId = (Self._FadeId or 0) + 1
-        local FadeId = Self._FadeId
-
-        local Finished = false
-
-        local function Complete()
-            if Finished then
-                return
-            end
-
-            Finished = true
-
-            if FadeId ~= Self._FadeId then
-                return
-            end
-
-            if Callback and type(Callback) == "function" then
-                Callback()
-            end
-
-            Self.Instance.Visible = Visibility
-        end
+        local NewTween
 
         local Children = Self.Instance:GetDescendants()
         table.insert(Children, Self.Instance)
-
-        local Pending = 0
 
         for _, Child in Children do
             local TransparencyProperty = Library:GetTweenProperty(Child)
@@ -468,38 +452,20 @@ do
 
             if type(TransparencyProperty) == "table" then
                 for _, Property in TransparencyProperty do
-                    Pending = Pending + 1
-                    local NewTween = Library:Fade(Property, Visibility, Child)
-                    if NewTween then
-                        Library:Connect(NewTween.Completed, function()
-                            Pending = Pending - 1
-                            if Pending <= 0 then
-                                Complete()
-                            end
-                        end)
-                    else
-                        Pending = Pending - 1
-                    end
+                    NewTween = Library:Fade(Property, Visibility, Child)
                 end
             else
-                Pending = Pending + 1
-                local NewTween = Library:Fade(TransparencyProperty, Visibility, Child)
-                if NewTween then
-                    Library:Connect(NewTween.Completed, function()
-                        Pending = Pending - 1
-                        if Pending <= 0 then
-                            Complete()
-                        end
-                    end)
-                else
-                    Pending = Pending - 1
-                end
+                NewTween = Library:Fade(TransparencyProperty, Visibility, Child)
             end
         end
 
-        if Pending <= 0 then
-            Complete()
-        end
+        Library:Connect(NewTween.Completed, function()
+            if Callback and type(Callback) == "function" then
+                Callback()
+            end
+
+            Self.Instance.Visible = Visibility
+        end)
     end
 
     Library.MakeDraggable = function(Self)
@@ -1190,40 +1156,6 @@ do
         end
     end
 
-    Library.SaveAutoLayout = function(Self)
-        local Success, Layout = pcall(function()
-            return Library:GetLayoutConfig()
-        end)
-        if not Success or not Layout or next(Layout) == nil then
-            return
-        end
-
-        local Path = Library.Directory .. Library.Folders.Configs .. "/AutoLayout.json"
-        pcall(function()
-            if not isfolder(Library.Directory .. Library.Folders.Configs) then
-                makefolder(Library.Directory .. Library.Folders.Configs)
-            end
-            writefile(Path, HttpService:JSONEncode(Layout))
-        end)
-    end
-
-    Library.LoadAutoLayout = function(Self)
-        local Path = Library.Directory .. Library.Folders.Configs .. "/AutoLayout.json"
-        if not isfile(Path) then
-            return
-        end
-
-        local Success, Layout = pcall(function()
-            return HttpService:JSONDecode(readfile(Path))
-        end)
-        if Success and type(Layout) == "table" then
-            task.defer(function()
-                task.wait()
-                Library:ApplyLayoutConfig(Layout)
-            end)
-        end
-    end
-
     Library.GetConfig = function(Self)
         local Config = {}
 
@@ -1352,12 +1284,12 @@ do
     Library.ChangeItemTheme = function(Self, Properties)
         local Object = Self.Instance
 
-        local ThemeData = Library.ThemeMap[Object]
-        if not ThemeData then
+        if not Library.ThemingStuff[Object] then
             return
         end
 
-        ThemeData.Properties = Properties
+        Library.ThemingStuff[Object].Properties = Properties
+        Library.ThemingStuff[Object] = Library.ThemeMap[Object]
     end
 
     Library.ChangeTheme = function(Self, Theme, Color)
@@ -7610,13 +7542,12 @@ do
                     TextColor3 = Color3.fromRGB(235, 235, 235),
                     TextStrokeColor3 = Color3.fromRGB(255, 255, 255),
                     Text = Window.Title,
-                    AnchorPoint = Vector2.new(0.5, 1),
+                    AnchorPoint = Vector2.new(0, 1),
                     BorderSizePixel = 0,
                     BackgroundTransparency = 1,
-                    Position = UDim2.new(0.5, 0, 0, -8),
+                    Position = UDim2.new(0, -1, 0, -8),
                     AutomaticSize = Enum.AutomaticSize.XY,
                     TextSize = 9,
-                    TextXAlignment = Enum.TextXAlignment.Center,
                     BackgroundColor3 = Color3.fromRGB(255, 255, 255)
                 }):AddToTheme({ TextColor3 = "Text" })
 
@@ -7656,7 +7587,6 @@ do
                     Size = UDim2.new(0, 0, 0, 16),
                     AutomaticSize = Enum.AutomaticSize.X,
                     BorderSizePixel = 0,
-                    Visible = false,
                     BackgroundColor3 = Color3.fromRGB(46, 46, 46)
                 }):AddToTheme({ BackgroundColor3 = function() return Library.Theme["Outline"] end })
 
@@ -8106,11 +8036,14 @@ do
                 Page.Items = Items
             end
 
-            local TurnId = 0
+            local Debounce = false
 
             function Page:Turn(Bool)
-                TurnId = TurnId + 1
-                local Id = TurnId
+                if Debounce then
+                    return
+                end
+
+                Debounce = true
 
                 Page.Active = Bool
 
@@ -8123,11 +8056,9 @@ do
                 end
 
                 Items["Page"]:FadeDescendants(Bool, function()
-                    if Id ~= TurnId then
-                        return
-                    end
+                    Debounce = false
 
-                    if Bool then
+                    if Items["Page"].Instance.Visible then
                         Items["Page"].Instance.Parent = Page.Window.Items["Content"].Instance
                     else
                         Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
@@ -8259,13 +8190,16 @@ do
                 Page.Items = Items
             end
 
-            local TurnId = 0
+            local Debounce = false
 
             function Page:Turn(Bool)
-                TurnId = TurnId + 1
-                local Id = TurnId
+                if Debounce then
+                    return
+                end
 
                 Page.Active = Bool
+
+                Debounce = true
 
                 if Bool then
                     Items["Inactive"]:ChangeItemTheme({ TextColor3 = "Accent" })
@@ -8276,11 +8210,9 @@ do
                 end
 
                 Items["Page"]:FadeDescendants(Bool, function()
-                    if Id ~= TurnId then
-                        return
-                    end
+                    Debounce = false
 
-                    if Bool then
+                    if Items["Page"].Instance.Visible then
                         Items["Page"].Instance.Parent = Page.Page.Items["Columns"].Instance
                     else
                         Items["Page"].Instance.Parent = Library.UnusedHolder.Instance
@@ -8839,96 +8771,6 @@ do
             end
 
             return setmetatable(Toggle, Library)
-        end
-
-        Library.Colorpicker = function(Self, Params)
-            Params = Params or {}
-
-            local Colorpicker = {
-                Name = Params.Name or Params.name or "Colorpicker",
-                Flag = Params.Flag or Params.flag or (Params.Name or Params.name or "Colorpicker"),
-                Default = Params.Default or Params.default or Color3.fromRGB(255, 255, 255),
-                Callback = Params.Callback or Params.callback or function() end,
-                Alpha = Params.Alpha or Params.alpha or 0,
-                Tooltip = Params.Tooltip or Params.tooltip or nil,
-
-                Window = Self.Window,
-                Page = Self.Page,
-                Section = Self,
-
-                Items = {}
-            }
-
-            local Items = {}
-            do
-                Items["Row"] = Library:Create("Frame", {
-                    Name = "\0",
-                    Parent = Colorpicker.Section.Items["Content"].Instance,
-                    BackgroundTransparency = 1,
-                    Size = UDim2.new(1, 0, 0, 12),
-                    BorderSizePixel = 0
-                })
-
-                Items["Row"]:Tooltip(Colorpicker.Tooltip)
-
-                Items["Text"] = Library:Create("TextLabel", {
-                    Name = "\0",
-                    FontFace = Library.Font,
-                    TextSize = Library.FontSize,
-                    Parent = Items["Row"].Instance,
-                    TextColor3 = Library.Theme["Text"],
-                    Text = Colorpicker.Name,
-                    AnchorPoint = Vector2.new(0, 0.5),
-                    Size = UDim2.new(0, 0, 0, 12),
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(0, 0, 0.5, 0),
-                    BorderSizePixel = 0,
-                    AutomaticSize = Enum.AutomaticSize.X
-                }):AddToTheme({ TextColor3 = 'Text' })
-
-                Items["SubElements"] = Library:Create("Frame", {
-                    Name = "\0",
-                    Parent = Items["Row"].Instance,
-                    AnchorPoint = Vector2.new(1, 0),
-                    BackgroundTransparency = 1,
-                    Position = UDim2.new(1, 0, 0, 0),
-                    Size = UDim2.new(0, 0, 1, 0),
-                    BorderSizePixel = 0,
-                    AutomaticSize = Enum.AutomaticSize.X
-                })
-
-                Library:Create("UIListLayout", {
-                    Name = "\0",
-                    Parent = Items["SubElements"].Instance,
-                    VerticalAlignment = Enum.VerticalAlignment.Center,
-                    FillDirection = Enum.FillDirection.Horizontal,
-                    HorizontalAlignment = Enum.HorizontalAlignment.Right,
-                    Padding = UDim.new(0, 6),
-                    SortOrder = Enum.SortOrder.LayoutOrder
-                })
-
-                local NewColorpicker, ColorpickerItems = Library:CreateColorpicker({
-                    Parent = Items["SubElements"],
-                    Page = Colorpicker.Page,
-                    Section = Colorpicker.Section,
-                    Flag = Colorpicker.Flag,
-                    Default = Colorpicker.Default,
-                    Callback = Colorpicker.Callback,
-                    Alpha = Colorpicker.Alpha
-                })
-
-                Colorpicker.Items = Items
-            end
-
-            function Colorpicker:SetVisibility(Bool)
-                Items["Row"].Instance.Visible = Bool
-            end
-
-            function Colorpicker:SetColor(Color, Alpha)
-                NewColorpicker:Set(Color, Alpha)
-            end
-
-            return setmetatable(Colorpicker, Library)
         end
 
         Library.Button = function(Self, Params)
