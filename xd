@@ -482,15 +482,13 @@ do
 
         local Gui = Self.Instance
         local Dragging = false
-        local DragStart
-        local StartPosition
+        local GrabOffset
 
-        local Set = function(Input)
-            Gui.AnchorPoint = Vector2.new(0, 0)
+        local Set = function()
+            local MouseLocation = UserInputService:GetMouseLocation()
 
-            local DragDelta = Input.Position - DragStart
-            local NewX = StartPosition.X.Offset + DragDelta.X
-            local NewY = StartPosition.Y.Offset + DragDelta.Y
+            local NewX = MouseLocation.X - GrabOffset.X
+            local NewY = MouseLocation.Y - GrabOffset.Y
 
             local ScreenSize = Gui.Parent.AbsoluteSize
             local GuiSize = Gui.AbsoluteSize
@@ -506,9 +504,14 @@ do
         Self:Connect("InputBegan", function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = true
-                DragStart = Input.Position
+
+                local MouseLocation = UserInputService:GetMouseLocation()
                 local AbsPos = Gui.AbsolutePosition
-                StartPosition = UDim2.fromOffset(AbsPos.X, AbsPos.Y)
+
+                Gui.AnchorPoint = Vector2.new(0, 0)
+                Gui.Position = UDim2.fromOffset(AbsPos.X, AbsPos.Y)
+
+                GrabOffset = Vector2.new(MouseLocation.X - AbsPos.X, MouseLocation.Y - AbsPos.Y)
 
                 if InputChanged then
                     return
@@ -530,7 +533,7 @@ do
         Library:Connect(UserInputService.InputChanged, function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseMovement or Input.UserInputType == Enum.UserInputType.Touch then
                 if Dragging then
-                    Set(Input)
+                    Set()
                 end
             end
         end)
