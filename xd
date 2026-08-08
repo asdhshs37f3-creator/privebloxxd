@@ -500,10 +500,33 @@ do
         end
 
         local InputChanged
+        local CursorState
+
+        local function SetDragCursor()
+            if Library.MouseCursor and Library.MouseCursor.Instance and Library.MouseCursor.Instance.Visible then
+                CursorState = {
+                    CustomVisible = true,
+                    MouseIconEnabled = UserInputService.MouseIconEnabled
+                }
+                Library.MouseCursor.Instance.Visible = false
+                UserInputService.MouseIconEnabled = true
+            end
+        end
+
+        local function RestoreDragCursor()
+            if CursorState then
+                if Library and Library.MouseCursor and Library.MouseCursor.Instance then
+                    Library.MouseCursor.Instance.Visible = Library.WindowOpenState
+                end
+                UserInputService.MouseIconEnabled = CursorState.MouseIconEnabled
+                CursorState = nil
+            end
+        end
 
         Self:Connect("InputBegan", function(Input)
             if Input.UserInputType == Enum.UserInputType.MouseButton1 or Input.UserInputType == Enum.UserInputType.Touch then
                 Dragging = true
+                SetDragCursor()
 
                 local MouseLocation = UserInputService:GetMouseLocation()
                 local AbsPos = Gui.AbsolutePosition
@@ -520,6 +543,7 @@ do
                 InputChanged = Input.Changed:Connect(function()
                     if Input.UserInputState == Enum.UserInputState.End then
                         Dragging = false
+                        RestoreDragCursor()
                         InputChanged:Disconnect()
                         InputChanged = nil
                         task.defer(function()
