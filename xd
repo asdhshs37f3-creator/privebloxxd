@@ -403,14 +403,10 @@ do
         end
 
         local OldTransparency = Object[Property]
-        local IsTransparent = OldTransparency >= 1
 
         Object[Property] = Visibility and 1 or OldTransparency
 
-        local Target = Visibility and 0 or 1
-        if not Visibility and IsTransparent then
-            Target = OldTransparency
-        end
+        local Target = Visibility and OldTransparency or 1
 
         local NewTween = Library:Tween({
             [Property] = Target
@@ -475,11 +471,7 @@ do
                     Pending = Pending + 1
                     local NewTween = Library:Fade(Property, Visibility, Child)
                     if NewTween then
-                        Library:Connect(NewTween.Completed, function(Playback)
-                            if Playback ~= Enum.PlaybackState.Completed then
-                                return
-                            end
-
+                        Library:Connect(NewTween.Completed, function()
                             Pending = Pending - 1
                             if Pending <= 0 then
                                 Complete()
@@ -493,11 +485,7 @@ do
                 Pending = Pending + 1
                 local NewTween = Library:Fade(TransparencyProperty, Visibility, Child)
                 if NewTween then
-                    Library:Connect(NewTween.Completed, function(Playback)
-                        if Playback ~= Enum.PlaybackState.Completed then
-                            return
-                        end
-
+                    Library:Connect(NewTween.Completed, function()
                         Pending = Pending - 1
                         if Pending <= 0 then
                             Complete()
