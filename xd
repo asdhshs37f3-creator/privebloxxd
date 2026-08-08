@@ -1364,12 +1364,12 @@ do
     Library.ChangeItemTheme = function(Self, Properties)
         local Object = Self.Instance
 
-        if not Library.ThemingStuff[Object] then
+        local ThemeData = Library.ThemeMap[Object]
+        if not ThemeData then
             return
         end
 
-        Library.ThemingStuff[Object].Properties = Properties
-        Library.ThemingStuff[Object] = Library.ThemeMap[Object]
+        ThemeData.Properties = Properties
     end
 
     Library.ChangeTheme = function(Self, Theme, Color)
